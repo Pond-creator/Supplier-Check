@@ -77,6 +77,15 @@ button:disabled{opacity:.55;cursor:default}
 .msg.info{background:var(--near-bg);color:var(--near-ink)}
 .msg.ok{background:var(--ok-bg);color:var(--ok-ink);font-weight:600}
 .item .fix{display:block;font-size:13px;margin-top:2px;opacity:.9}
+.busy{position:fixed;inset:0;background:rgba(10,14,22,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.busy[hidden]{display:none}
+.busy-box{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:24px 28px;min-width:240px;max-width:340px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.spin{width:46px;height:46px;margin:0 auto 14px;border-radius:50%;border:5px solid var(--line);border-top-color:var(--primary);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.busy-title{font-weight:700;font-size:17px}
+.busy-sub{color:var(--muted);font-size:14px;margin-top:6px}
+.busy-bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:10px}
+.busy-bar div{height:100%;width:0;background:var(--primary);transition:width .3s}
 .legend{font-size:14px;color:var(--muted);margin-top:10px}
 @media (max-width:560px){
   .item{grid-template-columns:28px 1fr}
@@ -136,11 +145,20 @@ button:disabled{opacity:.55;cursor:default}
   </section>
 </div>
 
+<div class="busy" id="busy" hidden role="status" aria-live="polite">
+  <div class="busy-box">
+    <div class="spin"></div>
+    <div class="busy-title" id="busyText">กำลังตรวจสอบ…</div>
+    <div class="busy-bar" id="busyBarWrap" hidden><div id="busyBar"></div></div>
+    <div class="busy-sub" id="busySub">0 วินาที</div>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script>
 (function(){
   const API = (window.CHECKER_API_URL || '').trim();
-  const CHUNK = 200, MAX = 2000;
+  const CHUNK = 100, MAX = 2000;
   const $ = id => document.getElementById(id);
   const bulk = $('bulk'), msg = $('msg');
   let results = [], filter = 'all', recheck = false;
@@ -175,13 +193,13 @@ button:disabled{opacity:.55;cursor:default}
     if (!all.length) { show('กรุณาใส่รายชื่ออย่างน้อย 1 บรรทัด', 'info'); return; }
     if (all.length > MAX) { show('มีเกิน ' + MAX.toLocaleString() + ' บรรทัด กรุณาแบ่งตรวจทีละชุด', 'info'); return; }
     const btn = this; btn.disabled = true;
+    busyStart(all.length);
     try {
       const out = [];
       for (let i = 0; i < all.length; i += CHUNK) {
-        btn.textContent = 'กำลังตรวจ… ' + Math.min(i + CHUNK, all.length) + '/' + all.length;
         const part = all.slice(i, i + CHUNK);
-        const res = await fetch(API, { method: 'POST', body: JSON.stringify({ code: code, lines: part }) });
-        const data = await res.json();
+        const data = await postJSON({ code: code, lines: part });
+        busyDone(Math.min(i + CHUNK, all.length));
         if (!data.ok) {
           if (data.auth) { $('code').focus(); }
           throw new Error(data.error || 'ระบบตอบกลับผิดพลาด');
@@ -200,11 +218,67 @@ button:disabled{opacity:.55;cursor:default}
       });
       results = out; filter = 'all'; render();
     } catch (err) {
+      busyStop();
       show(err.message, 'err');
     } finally {
-      btn.disabled = false; btn.textContent = 'ตรวจสอบ';
+      busyStop();
+      btn.disabled = false;
     }
   };
+
+  // ===== ส่งข้อมูล: มีหมดเวลา + ลองใหม่อัตโนมัติ (ตรวจอย่างเดียว ยิงซ้ำได้ปลอดภัย) =====
+  async function postJSON(payload){
+    const BACKOFF = [1500, 4000];
+    let lastErr;
+    for (let t = 0; t < 3; t++) {
+      if (t > 0) busyNote('เชื่อมต่อใหม่… (ครั้งที่ ' + (t + 1) + '/3)');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 30000);
+      try {
+        const res = await fetch(API, { method: 'POST', body: JSON.stringify(payload), signal: ctrl.signal });
+        const text = await res.text();
+        clearTimeout(timer);
+        if (text.trim().startsWith('<')) throw new Error('GOOGLE_HTML');
+        return JSON.parse(text);
+      } catch (e) {
+        clearTimeout(timer);
+        lastErr = e.name === 'AbortError'
+          ? 'Google ตอบช้าเกินไป — กด "ตรวจสอบ" อีกครั้ง'
+          : e.message === 'GOOGLE_HTML'
+            ? 'Google ตอบกลับมาไม่ครบ — กด "ตรวจสอบ" อีกครั้ง'
+            : 'เชื่อมต่อไม่ได้ — ตรวจอินเทอร์เน็ต แล้วกด "ตรวจสอบ" อีกครั้ง';
+        if (t < 2) await new Promise(r => setTimeout(r, BACKOFF[t]));
+      }
+    }
+    throw new Error(lastErr);
+  }
+
+  // ===== วงหมุน: วินาทีจริง + % จริง (ขยับเมื่อตรวจเสร็จจริงเท่านั้น) =====
+  let busyTimer = null, busyT0 = 0, busyTotal = 0, busyNoteText = '';
+  function busyStart(total){
+    busyTotal = total; busyT0 = Date.now(); busyNoteText = '';
+    $('busyBarWrap').hidden = total <= CHUNK;
+    $('busyBar').style.width = '0%';
+    $('busyText').textContent = total <= CHUNK ? 'กำลังตรวจสอบ ' + total + ' รายชื่อ…' : 'กำลังตรวจสอบ… 0%';
+    busyTick(); $('busy').hidden = false;
+    clearInterval(busyTimer); busyTimer = setInterval(busyTick, 1000);
+  }
+  function busyTick(){
+    const s = Math.floor((Date.now() - busyT0) / 1000);
+    let sub = s + ' วินาที';
+    if (busyNoteText) sub += ' · ' + busyNoteText;
+    else if (s >= 15) sub += ' · Google ตอบช้ากว่าปกติ กรุณารอสักครู่';
+    $('busySub').textContent = sub;
+  }
+  function busyNote(t){ busyNoteText = t; busyTick(); }
+  function busyDone(done){
+    busyNoteText = '';
+    if (busyTotal <= CHUNK) return;
+    const pct = Math.round(done / busyTotal * 100);
+    $('busyBar').style.width = pct + '%';
+    $('busyText').textContent = 'กำลังตรวจสอบ… ' + pct + '% (' + done.toLocaleString() + '/' + busyTotal.toLocaleString() + ')';
+  }
+  function busyStop(){ clearInterval(busyTimer); busyTimer = null; $('busy').hidden = true; }
 
   function render(){
     const c = { match:0, near:0, none:0 };
