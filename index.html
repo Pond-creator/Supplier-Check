@@ -76,6 +76,10 @@ button:disabled{opacity:.55;cursor:default}
 .msg.err{background:var(--no-bg);color:var(--no-ink)}
 .msg.info{background:var(--near-bg);color:var(--near-ink)}
 .msg.ok{background:var(--ok-bg);color:var(--ok-ink);font-weight:600}
+.hint{background:var(--near-bg);color:var(--near-ink);border:1px solid var(--near-line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.hint ol{margin:6px 0 6px;padding-left:22px}
+.hint-note{font-size:14px;margin-bottom:10px}
+.item .fix{display:block;font-size:13px;margin-top:2px;opacity:.9}
 .legend{font-size:14px;color:var(--muted);margin-top:10px}
 @media (max-width:560px){
   .item{grid-template-columns:28px 1fr}
@@ -126,10 +130,20 @@ button:disabled{opacity:.55;cursor:default}
   <section class="card" id="resultCard" hidden>
     <h2>ผลการตรวจสอบ</h2>
     <div class="summary" id="summary"></div>
+    <div class="hint" id="nearHint" hidden>
+      <b>🟨 มี <span id="nearCount">0</span> รายการ "ใกล้เคียง" — ระบบยังไม่แน่ใจ ต้องให้คุณยืนยัน</b>
+      <ol>
+        <li>ตรวจตัวสะกดของบรรทัดสีเหลือง — พิมพ์ <b>ชื่อเต็มที่ถูกต้อง</b> (ไม่ย่อ ไม่ตกหล่น)</li>
+        <li>กดปุ่มด้านล่าง เพื่อดึงเฉพาะบรรทัดสีเหลืองไปแก้ในกล่อง</li>
+        <li>แก้ชื่อแล้วกด <b>ตรวจสอบ</b> อีกครั้ง</li>
+      </ol>
+      <div class="hint-note">รอบตรวจซ้ำ: ถ้าชื่อตรง → 🟩 ตรงกัน · ถ้ายังไม่ตรง → ระบบปัดเป็น 🟥 ไม่พบ</div>
+      <button id="fixNear">✏️ ดึงบรรทัดสีเหลืองไปแก้</button>
+    </div>
     <div class="list" id="list"></div>
     <div class="legend">
       🟩 <b>ตรงกัน</b> = มีข้อมูลตรงกับของเรา &nbsp;·&nbsp;
-      🟨 <b>ใกล้เคียง</b> = คล้ายมาก โปรดตรวจตัวสะกดอีกครั้ง &nbsp;·&nbsp;
+      🟨 <b>ใกล้เคียง</b> = คล้ายมากแต่ยังไม่แน่ใจ โปรดพิมพ์ชื่อเต็มแล้วตรวจอีกครั้ง &nbsp;·&nbsp;
       🟥 <b>ไม่พบ</b> = ไม่มีในข้อมูลของเรา
     </div>
   </section>
@@ -142,7 +156,7 @@ button:disabled{opacity:.55;cursor:default}
   const CHUNK = 200, MAX = 2000;
   const $ = id => document.getElementById(id);
   const bulk = $('bulk'), msg = $('msg');
-  let results = [], filter = 'all';
+  let results = [], filter = 'all', recheck = false;
 
   const LABEL = {
     match: '✓ ➜ ตรงกัน',
@@ -160,7 +174,7 @@ button:disabled{opacity:.55;cursor:default}
   bulk.addEventListener('input', updateCount);
 
   $('clear').onclick = function(){
-    bulk.value = ''; results = []; filter = 'all';
+    bulk.value = ''; results = []; filter = 'all'; recheck = false;
     $('list').innerHTML = ''; $('summary').innerHTML = '';
     $('resultCard').hidden = true; hideMsg(); updateCount();
   };
@@ -187,6 +201,9 @@ button:disabled{opacity:.55;cursor:default}
         }
         data.results.forEach((r, k) => out.push({ text: part[k], status: r.status, score: r.score, g: r.g }));
       }
+      // รอบตรวจซ้ำ: ยังใกล้เคียงอยู่ = ปัดเป็นไม่พบ
+      if (recheck) out.forEach(r => { if (r.status === 'near') { r.status = 'none'; r.rechecked = true; } });
+      recheck = false;
       // หาบรรทัดที่ชนซัพตัวเดียวกัน
       const firstOf = {};
       out.forEach((r, i) => {
@@ -232,6 +249,12 @@ button:disabled{opacity:.55;cursor:default}
       if (r.status === 'near') {
         const s = document.createElement('span'); s.className = 'score';
         s.textContent = '(' + Math.round(r.score * 100) + '%)'; b.appendChild(s);
+        const f = document.createElement('span'); f.className = 'fix';
+        f.textContent = '↳ โปรดตรวจตัวสะกด แล้วพิมพ์ชื่อเต็มอีกครั้ง'; t.appendChild(f);
+      }
+      if (r.rechecked) {
+        const f = document.createElement('span'); f.className = 'fix';
+        f.textContent = '↳ ตรวจซ้ำแล้วยังไม่ตรง'; t.appendChild(f);
       }
       if (r.dupOf) {
         const d = document.createElement('span'); d.className = 'dup';
@@ -240,10 +263,21 @@ button:disabled{opacity:.55;cursor:default}
       row.append(n, t, b); list.appendChild(row);
     });
     $('resultCard').hidden = false;
+    $('nearHint').hidden = !c.near;
+    $('nearCount').textContent = c.near;
     if (c.match) show('✓ มีข้อมูลตรงกัน ' + (c.match - dups) + ' ราย (จาก ' + results.length + ' บรรทัด'
       + (dups ? ', ซ้ำ ' + dups + ' บรรทัด' : '') + ')', 'ok');
     else show('ไม่พบข้อมูลที่ตรงกัน', 'info');
   }
+
+  $('fixNear').onclick = function(){
+    const near = results.filter(r => r.status === 'near').map(r => r.text);
+    if (!near.length) return;
+    bulk.value = near.join('\n'); updateCount();
+    recheck = true;
+    show('รอบตรวจซ้ำ: แก้ชื่อ ' + near.length + ' รายการให้ถูกต้อง แล้วกด "ตรวจสอบ" — ถ้ายังไม่ตรงจะปัดเป็น 🟥 ไม่พบ', 'info');
+    bulk.scrollIntoView({ behavior: 'smooth', block: 'center' }); bulk.focus();
+  };
 
   updateCount();
 })();
