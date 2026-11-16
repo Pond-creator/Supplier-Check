@@ -56,8 +56,13 @@ function doPost(e) {
     if (denied) return json_({ ok: false, auth: true, error: denied });
     const lines = Array.isArray(body.lines) ? body.lines.slice(0, MAX_LINES) : [];
     const index = buildIndex_(readNames_());
+    const salt = dupSalt_();
     const results = lines.map(function (line) {
-      return matchOne_(String(line || '').slice(0, MAX_LINE_LEN), index);
+      const r = matchOne_(String(line || '').slice(0, MAX_LINE_LEN), index);
+      const out = { status: r.status, score: r.score };
+      // รหัสกลุ่ม: บรรทัดที่ชนซัพตัวเดียวกันจะได้รหัสเดียวกัน (ไม่บอกแถว/ชื่อในชีท)
+      if (r.status === 'match' && r.row !== undefined) out.g = groupToken_(r.row, salt);
+      return out;
     });
     return json_({ ok: true, results: results });
   } catch (err) {
@@ -78,11 +83,24 @@ function readNames_() {
   const width = Math.max(COL_TH, COL_EN);
   const values = sh.getRange(HEADER_ROWS + 1, 1, last - HEADER_ROWS, width).getValues();
   const names = [];
-  values.forEach(function (r) {
-    if (r[COL_TH - 1]) names.push(String(r[COL_TH - 1]));
-    if (r[COL_EN - 1]) names.push(String(r[COL_EN - 1]));
+  values.forEach(function (r, i) {
+    if (r[COL_TH - 1]) names.push({ name: String(r[COL_TH - 1]), row: i });
+    if (r[COL_EN - 1]) names.push({ name: String(r[COL_EN - 1]), row: i });
   });
   return names;
+}
+
+/** ค่าสุ่มลับสำหรับสร้างรหัสกลุ่ม (สร้างครั้งแรกครั้งเดียว เก็บใน Script Properties) */
+function dupSalt_() {
+  const props = PropertiesService.getScriptProperties();
+  let s = props.getProperty('DUP_SALT');
+  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); props.setProperty('DUP_SALT', s); }
+  return s;
+}
+
+function groupToken_(row, salt) {
+  const sig = Utilities.computeHmacSha256Signature(String(row), salt);
+  return Utilities.base64EncodeWebSafe(sig).slice(0, 12);
 }
 
 // ===== ตรรกะการจับคู่ (ไม่ขึ้นกับ Google — ทดสอบนอก Apps Script ได้) =====
@@ -164,13 +182,15 @@ function keys_(s) {
 
 function buildIndex_(names) {
   const exact = {};
-  const list = [];
-  names.forEach(function (n) {
-    keys_(n).forEach(function (k) {
-      if (!exact[k]) { exact[k] = true; list.push(k); }
+  const list = [], rows = [];
+  names.forEach(function (n, i) {
+    const name = typeof n === 'string' ? n : n.name;
+    const row = typeof n === 'string' ? i : n.row;
+    keys_(name).forEach(function (k) {
+      if (exact[k] === undefined) { exact[k] = row; list.push(k); rows.push(row); }
     });
   });
-  return { exact: exact, list: list };
+  return { exact: exact, list: list, rows: rows };
 }
 
 /** ระยะแก้ไข (Levenshtein) แบบหยุดก่อนถ้าเกิน max */
@@ -200,20 +220,21 @@ function editDistance_(a, b, max) {
 function matchOne_(line, index) {
   const keys = keys_(line);
   if (!keys.length) return { status: 'empty', score: 0 };
-  let best = 0;
+  let best = 0, bestRow;
   for (let k = 0; k < keys.length && best < 0.999; k++) {
-    const s = scoreKey_(keys[k], index);
-    if (s > best) best = s;
+    const r = scoreKey_(keys[k], index);
+    if (r.s > best) { best = r.s; bestRow = r.row; }
   }
   best = Math.round(best * 100) / 100;
   const status = best >= MATCH_SCORE ? 'match' : best >= NEAR_SCORE ? 'near' : 'none';
-  return { status: status, score: best };
+  return { status: status, score: best, row: bestRow };
 }
 
 function scoreKey_(key, index) {
-  if (index.exact[key]) return 1;
-  let best = 0;
+  if (index.exact[key] !== undefined) return { s: 1, row: index.exact[key] };
+  let best = 0, bestRow;
   for (let i = 0; i < index.list.length; i++) {
+    const before = best;
     const cand = index.list[i];
     const maxLen = Math.max(key.length, cand.length);
     const allowed = Math.floor(maxLen * (1 - NEAR_SCORE));
@@ -230,9 +251,10 @@ function scoreKey_(key, index) {
       const s = 0.8 + 0.09 * (shorter.length / longer.length);
       if (s > best) best = s;
     }
+    if (best > before) bestRow = index.rows[i];
     if (best >= 0.999) break;
   }
-  return best;
+  return { s: best, row: bestRow };
 }
 
 // ===== ทดสอบใน Apps Script editor: เลือก testMatch แล้วกด Run =====
