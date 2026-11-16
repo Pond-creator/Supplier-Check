@@ -102,7 +102,7 @@ button:disabled{opacity:.55;cursor:default}
     <h2>วิธีใช้</h2>
     <ol>
       <li><b>1 บรรทัด = 1 ซัพ</b> — ใส่ชื่อภาษาไทยหรืออังกฤษก็ได้</li>
-      <li>พิมพ์ทีละชื่อในช่องด้านบนแล้วกด “เพิ่ม” (หรือ Enter) <i>หรือ</i> ก็อปวางทั้งหมดลงกล่องใหญ่ทีเดียว</li>
+      <li>ก็อปรายชื่อจาก Excel / Google Sheet (คอลัมน์เดียว) มาวางในกล่องได้ทั้งหมดทีเดียว</li>
       <li>ไม่ต้องใส่ “บริษัท / จำกัด / Co., Ltd.” ก็ได้ และพิมพ์ผิดเล็กน้อยระบบยังจับได้</li>
       <li>กด “ตรวจสอบ” ผลจะขึ้นเป็นสีตามด้านล่าง</li>
     </ol>
@@ -112,13 +112,7 @@ button:disabled{opacity:.55;cursor:default}
     <label class="label" for="code" style="margin-top:0">🔑 รหัสเข้าใช้ <span style="font-weight:400;color:var(--muted)">(ได้รับจากผู้ดูแล)</span></label>
     <input type="password" id="code" placeholder="ใส่รหัสเข้าใช้" autocomplete="off">
 
-    <label class="label" for="one">เพิ่มทีละชื่อ</label>
-    <div class="row">
-      <input type="text" id="one" placeholder="เช่น บริษัท เอบีซี เทรดดิ้ง จำกัด" autocomplete="off">
-      <button id="add">เพิ่ม</button>
-    </div>
-
-    <label class="label" for="bulk">หรือวางทั้งหมด (1 บรรทัด = 1 ซัพ)</label>
+    <label class="label" for="bulk">วางรายชื่อซัพ (1 บรรทัด = 1 ซัพ)</label>
     <textarea id="bulk" placeholder="บริษัท เอบีซี เทรดดิ้ง จำกัด&#10;XYZ Logistics Co., Ltd.&#10;หจก. สมชายการช่าง"></textarea>
     <div class="meta"><span id="count">0 รายชื่อ</span><span>สูงสุดครั้งละ 2,000 บรรทัด</span></div>
 
@@ -147,7 +141,7 @@ button:disabled{opacity:.55;cursor:default}
   const API = (window.CHECKER_API_URL || '').trim();
   const CHUNK = 200, MAX = 2000;
   const $ = id => document.getElementById(id);
-  const one = $('one'), bulk = $('bulk'), msg = $('msg');
+  const bulk = $('bulk'), msg = $('msg');
   let results = [], filter = 'all';
 
   const LABEL = {
@@ -163,18 +157,10 @@ button:disabled{opacity:.55;cursor:default}
   function show(text, kind){ msg.textContent = text; msg.className = 'msg show ' + kind; }
   function hideMsg(){ msg.className = 'msg'; }
 
-  function addOne(){
-    const v = one.value.trim();
-    if (!v) return;
-    bulk.value = (bulk.value.trim() ? bulk.value.replace(/\s+$/,'') + '\n' : '') + v;
-    one.value = ''; one.focus(); updateCount();
-  }
-  $('add').onclick = addOne;
-  one.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addOne(); } });
   bulk.addEventListener('input', updateCount);
 
   $('clear').onclick = function(){
-    one.value = ''; bulk.value = ''; results = []; filter = 'all';
+    bulk.value = ''; results = []; filter = 'all';
     $('list').innerHTML = ''; $('summary').innerHTML = '';
     $('resultCard').hidden = true; hideMsg(); updateCount();
   };
