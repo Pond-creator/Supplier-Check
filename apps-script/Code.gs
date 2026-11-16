@@ -93,23 +93,82 @@ const TH_NOISE = ['ห้างหุ้นส่วนจำกัด', 'ห้
 const EN_NOISE = ['co', 'company', 'ltd', 'limited', 'inc', 'incorporated', 'corp', 'corporation',
   'plc', 'llc', 'part', 'partnership', 'ltdpart', 'the', 'pcl', 'public', 'hq', 'head', 'office', 'thailand', 'th'];
 
-/** ทำให้ชื่อเป็นรูปมาตรฐาน: ตัวเล็ก ตัดวรรค/สัญลักษณ์ ตัดคำว่า บริษัท/จำกัด/Co.,Ltd. ฯลฯ */
-function normalize_(s) {
+// ตัวอักษรอังกฤษที่เขียนเป็นเสียงไทย เช่น "เอบีซี" = abc, "เอสซีจี" = scg
+const TH_LETTERS = {
+  a: ['เอ'], b: ['บี'], c: ['ซี'], d: ['ดี'], e: ['อี'], f: ['เอฟ'], g: ['จี'],
+  h: ['เอช', 'เฮช'], i: ['ไอ'], j: ['เจ'], k: ['เค'], l: ['แอล', 'เอล'],
+  m: ['เอ็ม', 'เอม'], n: ['เอ็น', 'เอน'], o: ['โอ'], p: ['พี'], q: ['คิว'],
+  r: ['อาร์'], s: ['เอส'], t: ['ที'], u: ['ยู'], v: ['วี'],
+  w: ['ดับบลิว', 'ดับเบิลยู', 'ดับเบิ้ลยู'], x: ['เอ็กซ์', 'เอกซ์'], y: ['วาย'], z: ['แซด', 'เซด', 'เซ็ด']
+};
+const TH_LETTER_LIST = [];
+Object.keys(TH_LETTERS).forEach(function (en) {
+  TH_LETTERS[en].forEach(function (th) { TH_LETTER_LIST.push([th, en]); });
+});
+
+/** แปลงคำที่เป็นตัวอักษรอังกฤษสะกดไทยทั้งคำ เป็นอังกฤษ ("เอbซี" → "abc") ไม่ได้ = null */
+function spellToLatin_(tok) {
+  const n = tok.length, memo = {};
+  function go(i) {
+    if (i === n) return '';
+    if (memo[i] !== undefined) return memo[i];
+    let res = null;
+    const ch = tok.charAt(i);
+    if (/[a-z0-9]/.test(ch)) {
+      const rest = go(i + 1);
+      if (rest !== null) res = ch + rest;
+    } else {
+      for (let k = 0; k < TH_LETTER_LIST.length && res === null; k++) {
+        const th = TH_LETTER_LIST[k][0];
+        if (tok.substr(i, th.length) === th) {
+          const rest = go(i + th.length);
+          if (rest !== null) res = TH_LETTER_LIST[k][1] + rest;
+        }
+      }
+    }
+    memo[i] = res;
+    return res;
+  }
+  return go(0);
+}
+
+/** แตกชื่อเป็นคำ: ตัวเล็ก ตัดสัญลักษณ์ ตัดคำว่า บริษัท/บ./จำกัด/Co.,Ltd. ฯลฯ */
+function tokens_(s) {
   let t = String(s).normalize('NFC').toLowerCase();
   t = t.replace(/[​ ]/g, ' ');
   t = t.replace(/(^|[^฀-๿])บ\s*\.\s*/g, '$1 ');   // "บ." = บริษัท (ย่อ)
   TH_NOISE.forEach(function (w) { t = t.split(w).join(' '); });
   t = t.replace(/[^a-z0-9฀-๿]+/g, ' ');
-  const tokens = t.split(' ').filter(function (w) { return w && EN_NOISE.indexOf(w) === -1; });
-  return tokens.join('');
+  return t.split(' ').filter(function (w) { return w && EN_NOISE.indexOf(w) === -1; });
+}
+
+function normalize_(s) {
+  return tokens_(s).join('');
+}
+
+/** คีย์สำหรับเทียบ: แบบปกติ + แบบแปลงเสียงไทยเป็นตัวอังกฤษ (ถ้ามี) */
+function keys_(s) {
+  const toks = tokens_(s);
+  const plain = toks.join('');
+  if (!plain) return [];
+  let changed = false;
+  const alt = toks.map(function (w) {
+    if (!/[฀-๿]/.test(w)) return w;
+    const lat = spellToLatin_(w);
+    if (lat === null) return w;
+    changed = true;
+    return lat;
+  }).join('');
+  return changed && alt !== plain ? [plain, alt] : [plain];
 }
 
 function buildIndex_(names) {
   const exact = {};
   const list = [];
   names.forEach(function (n) {
-    const k = normalize_(n);
-    if (k && !exact[k]) { exact[k] = true; list.push(k); }
+    keys_(n).forEach(function (k) {
+      if (!exact[k]) { exact[k] = true; list.push(k); }
+    });
   });
   return { exact: exact, list: list };
 }
@@ -139,10 +198,20 @@ function editDistance_(a, b, max) {
 }
 
 function matchOne_(line, index) {
-  const key = normalize_(line);
-  if (!key) return { status: 'empty', score: 0 };
-  if (index.exact[key]) return { status: 'match', score: 1 };
+  const keys = keys_(line);
+  if (!keys.length) return { status: 'empty', score: 0 };
+  let best = 0;
+  for (let k = 0; k < keys.length && best < 0.999; k++) {
+    const s = scoreKey_(keys[k], index);
+    if (s > best) best = s;
+  }
+  best = Math.round(best * 100) / 100;
+  const status = best >= MATCH_SCORE ? 'match' : best >= NEAR_SCORE ? 'near' : 'none';
+  return { status: status, score: best };
+}
 
+function scoreKey_(key, index) {
+  if (index.exact[key]) return 1;
   let best = 0;
   for (let i = 0; i < index.list.length; i++) {
     const cand = index.list[i];
@@ -163,9 +232,7 @@ function matchOne_(line, index) {
     }
     if (best >= 0.999) break;
   }
-  best = Math.round(best * 100) / 100;
-  const status = best >= MATCH_SCORE ? 'match' : best >= NEAR_SCORE ? 'near' : 'none';
-  return { status: status, score: best };
+  return best;
 }
 
 // ===== ทดสอบใน Apps Script editor: เลือก testMatch แล้วกด Run =====
