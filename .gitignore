@@ -1,0 +1,9 @@
+# ไม่ขึ้น GitHub
+.claude/
+.env
+*.xlsx
+*.xls
+*.csv
+*.bak
+backup/
+NOTES*.md

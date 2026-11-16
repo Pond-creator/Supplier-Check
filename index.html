@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตรวจสอบรายชื่อซัพ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f6f8; --card:#ffffff; --text:#1d2433; --muted:#667085; --line:#e3e6eb;
+  --primary:#2f5bd3; --primary-ink:#fff;
+  --ok-bg:#e6f6ec; --ok-line:#34a853; --ok-ink:#17692f;
+  --near-bg:#fff6dc; --near-line:#e0a800; --near-ink:#7a5a00;
+  --no-bg:#f9eaea; --no-line:#d9534f; --no-ink:#9a2b28;
+  --input:#fbfcfd;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#13161c; --card:#1c2029; --text:#e7eaf0; --muted:#9aa3b2; --line:#2c3240;
+    --primary:#6d8ff0; --primary-ink:#0f1320;
+    --ok-bg:#16301f; --ok-line:#3fbf62; --ok-ink:#8fe0a6;
+    --near-bg:#33290f; --near-line:#e0b400; --near-ink:#f0d27a;
+    --no-bg:#3a1c1c; --no-line:#e0625e; --no-ink:#f2a5a2;
+    --input:#171a22;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#13161c; --card:#1c2029; --text:#e7eaf0; --muted:#9aa3b2; --line:#2c3240;
+  --primary:#6d8ff0; --primary-ink:#0f1320;
+  --ok-bg:#16301f; --ok-line:#3fbf62; --ok-ink:#8fe0a6;
+  --near-bg:#33290f; --near-line:#e0b400; --near-ink:#f0d27a;
+  --no-bg:#3a1c1c; --no-line:#e0625e; --no-ink:#f2a5a2;
+  --input:#171a22;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Sarabun",system-ui,sans-serif}
+.wrap{max-width:880px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:26px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+.card h2{font-size:18px;margin:0 0 10px}
+.privacy{border-left:4px solid var(--ok-line)}
+.privacy ul,.howto ol{margin:6px 0 0;padding-left:22px}
+.privacy li,.howto li{margin:2px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+input[type=text],input[type=password],textarea{width:100%;background:var(--input);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit}
+input[type=text]{flex:1;min-width:0}
+textarea{min-height:220px;resize:vertical;font-size:15px;line-height:1.7}
+input:focus,textarea:focus{outline:2px solid var(--primary);outline-offset:1px}
+button{font:inherit;font-weight:600;border-radius:8px;padding:10px 18px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
+button.primary{background:var(--primary);color:var(--primary-ink);border-color:var(--primary)}
+button:disabled{opacity:.55;cursor:default}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin:6px 0 12px;flex-wrap:wrap;gap:6px}
+.label{font-weight:600;margin:14px 0 6px;display:block}
+.summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.chip{border-radius:999px;padding:6px 14px;font-weight:600;border:1px solid var(--line);cursor:pointer;background:var(--card);color:var(--text)}
+.chip.active{outline:2px solid var(--primary)}
+.chip.ok{background:var(--ok-bg);color:var(--ok-ink);border-color:var(--ok-line)}
+.chip.near{background:var(--near-bg);color:var(--near-ink);border-color:var(--near-line)}
+.chip.no{background:var(--no-bg);color:var(--no-ink);border-color:var(--no-line)}
+.list{display:flex;flex-direction:column;gap:6px}
+.item{display:grid;grid-template-columns:40px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-radius:8px;border:1px solid var(--line);border-left-width:5px}
+.item .n{color:var(--muted);font-size:14px;text-align:right}
+.item .t{word-break:break-word}
+.item .b{font-weight:700;white-space:nowrap;font-size:15px}
+.item.match{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok-ink)}
+.item.near{background:var(--near-bg);border-color:var(--near-line);color:var(--near-ink)}
+.item.none{background:var(--no-bg);border-color:var(--no-line);color:var(--no-ink)}
+.item .score{font-weight:400;font-size:13px;opacity:.8;margin-left:4px}
+.msg{padding:12px 14px;border-radius:8px;margin-top:12px;display:none}
+.msg.show{display:block}
+.msg.err{background:var(--no-bg);color:var(--no-ink)}
+.msg.info{background:var(--near-bg);color:var(--near-ink)}
+.msg.ok{background:var(--ok-bg);color:var(--ok-ink);font-weight:600}
+.legend{font-size:14px;color:var(--muted);margin-top:10px}
+@media (max-width:560px){
+  .item{grid-template-columns:28px 1fr}
+  .item .b{grid-column:2}
+  h1{font-size:22px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ตรวจสอบรายชื่อซัพพลายเออร์</h1>
+  <p class="sub">วางรายชื่อของคุณ แล้วระบบจะบอกว่าชื่อไหนตรงกับข้อมูลของเรา</p>
+
+  <section class="card privacy">
+    <h2>🔒 ข้อมูลเป็นความลับทั้งสองฝ่าย</h2>
+    <ul>
+      <li>ต้องใช้ <b>รหัสเข้าใช้</b> จากผู้ดูแล — คนนอกที่เจอลิงก์ใช้ไม่ได้</li>
+      <li>หน้านี้ <b>ไม่แสดงและไม่ดาวน์โหลด</b> รายชื่อของเรามาที่เครื่องคุณ — คุณจะเห็นแค่ผลว่าบรรทัดของคุณ “ตรง / ใกล้เคียง / ไม่พบ”</li>
+      <li>รายชื่อที่คุณวาง <b>ไม่ถูกบันทึก</b> ที่ใดเลย ใช้เทียบแล้วทิ้งทันที เราไม่เห็นว่าคุณพิมพ์อะไร</li>
+      <li>กด “ล้างข้อมูล” เพื่อลบทุกอย่างออกจากหน้าจอ (ปิดหน้าเว็บก็หายเช่นกัน)</li>
+      <li>โค้ดทั้งหมดเปิดให้ตรวจสอบได้บน GitHub</li>
+    </ul>
+  </section>
+
+  <section class="card howto">
+    <h2>วิธีใช้</h2>
+    <ol>
+      <li><b>1 บรรทัด = 1 ซัพ</b> — ใส่ชื่อภาษาไทยหรืออังกฤษก็ได้</li>
+      <li>พิมพ์ทีละชื่อในช่องด้านบนแล้วกด “เพิ่ม” (หรือ Enter) <i>หรือ</i> ก็อปวางทั้งหมดลงกล่องใหญ่ทีเดียว</li>
+      <li>ไม่ต้องใส่ “บริษัท / จำกัด / Co., Ltd.” ก็ได้ และพิมพ์ผิดเล็กน้อยระบบยังจับได้</li>
+      <li>กด “ตรวจสอบ” ผลจะขึ้นเป็นสีตามด้านล่าง</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <label class="label" for="code" style="margin-top:0">🔑 รหัสเข้าใช้ <span style="font-weight:400;color:var(--muted)">(ได้รับจากผู้ดูแล)</span></label>
+    <input type="password" id="code" placeholder="ใส่รหัสเข้าใช้" autocomplete="off">
+
+    <label class="label" for="one">เพิ่มทีละชื่อ</label>
+    <div class="row">
+      <input type="text" id="one" placeholder="เช่น บริษัท เอบีซี เทรดดิ้ง จำกัด" autocomplete="off">
+      <button id="add">เพิ่ม</button>
+    </div>
+
+    <label class="label" for="bulk">หรือวางทั้งหมด (1 บรรทัด = 1 ซัพ)</label>
+    <textarea id="bulk" placeholder="บริษัท เอบีซี เทรดดิ้ง จำกัด&#10;XYZ Logistics Co., Ltd.&#10;หจก. สมชายการช่าง"></textarea>
+    <div class="meta"><span id="count">0 รายชื่อ</span><span>สูงสุดครั้งละ 2,000 บรรทัด</span></div>
+
+    <div class="row">
+      <button class="primary" id="check">ตรวจสอบ</button>
+      <button id="clear">ล้างข้อมูล</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </section>
+
+  <section class="card" id="resultCard" hidden>
+    <h2>ผลการตรวจสอบ</h2>
+    <div class="summary" id="summary"></div>
+    <div class="list" id="list"></div>
+    <div class="legend">
+      🟩 <b>ตรงกัน</b> = มีข้อมูลตรงกับของเรา &nbsp;·&nbsp;
+      🟨 <b>ใกล้เคียง</b> = คล้ายมาก โปรดตรวจตัวสะกดอีกครั้ง &nbsp;·&nbsp;
+      🟥 <b>ไม่พบ</b> = ไม่มีในข้อมูลของเรา
+    </div>
+  </section>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function(){
+  const API = (window.CHECKER_API_URL || '').trim();
+  const CHUNK = 200, MAX = 2000;
+  const $ = id => document.getElementById(id);
+  const one = $('one'), bulk = $('bulk'), msg = $('msg');
+  let results = [], filter = 'all';
+
+  const LABEL = {
+    match: '✓ ➜ ตรงกัน',
+    near:  '≈ ใกล้เคียง',
+    none:  '✗ ไม่พบ'
+  };
+
+  function lines(){
+    return bulk.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  }
+  function updateCount(){ $('count').textContent = lines().length.toLocaleString() + ' รายชื่อ'; }
+  function show(text, kind){ msg.textContent = text; msg.className = 'msg show ' + kind; }
+  function hideMsg(){ msg.className = 'msg'; }
+
+  function addOne(){
+    const v = one.value.trim();
+    if (!v) return;
+    bulk.value = (bulk.value.trim() ? bulk.value.replace(/\s+$/,'') + '\n' : '') + v;
+    one.value = ''; one.focus(); updateCount();
+  }
+  $('add').onclick = addOne;
+  one.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addOne(); } });
+  bulk.addEventListener('input', updateCount);
+
+  $('clear').onclick = function(){
+    one.value = ''; bulk.value = ''; results = []; filter = 'all';
+    $('list').innerHTML = ''; $('summary').innerHTML = '';
+    $('resultCard').hidden = true; hideMsg(); updateCount();
+  };
+
+  $('check').onclick = async function(){
+    hideMsg();
+    if (!API) { show('ยังไม่ได้ตั้งค่า URL ของระบบ (config.js) — โปรดติดต่อผู้ดูแล', 'err'); return; }
+    const all = lines();
+    const code = $('code').value.trim();
+    if (!code) { show('กรุณาใส่รหัสเข้าใช้', 'info'); $('code').focus(); return; }
+    if (!all.length) { show('กรุณาใส่รายชื่ออย่างน้อย 1 บรรทัด', 'info'); return; }
+    if (all.length > MAX) { show('มีเกิน ' + MAX.toLocaleString() + ' บรรทัด กรุณาแบ่งตรวจทีละชุด', 'info'); return; }
+    const btn = this; btn.disabled = true;
+    try {
+      const out = [];
+      for (let i = 0; i < all.length; i += CHUNK) {
+        btn.textContent = 'กำลังตรวจ… ' + Math.min(i + CHUNK, all.length) + '/' + all.length;
+        const part = all.slice(i, i + CHUNK);
+        const res = await fetch(API, { method: 'POST', body: JSON.stringify({ code: code, lines: part }) });
+        const data = await res.json();
+        if (!data.ok) {
+          if (data.auth) { $('code').focus(); }
+          throw new Error(data.error || 'ระบบตอบกลับผิดพลาด');
+        }
+        data.results.forEach((r, k) => out.push({ text: part[k], status: r.status, score: r.score }));
+      }
+      results = out; filter = 'all'; render();
+    } catch (err) {
+      show(err.message, 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = 'ตรวจสอบ';
+    }
+  };
+
+  function render(){
+    const c = { match:0, near:0, none:0 };
+    results.forEach(r => { if (c[r.status] !== undefined) c[r.status]++; });
+    const chips = [
+      ['all',  '', 'ทั้งหมด ' + results.length],
+      ['match','ok','✓ ตรงกัน ' + c.match],
+      ['near', 'near','≈ ใกล้เคียง ' + c.near],
+      ['none', 'no','✗ ไม่พบ ' + c.none]
+    ];
+    const sum = $('summary'); sum.innerHTML = '';
+    chips.forEach(([key, cls, txt]) => {
+      const b = document.createElement('button');
+      b.className = 'chip ' + cls + (filter === key ? ' active' : '');
+      b.textContent = txt;
+      b.onclick = () => { filter = key; render(); };
+      sum.appendChild(b);
+    });
+    const list = $('list'); list.innerHTML = '';
+    results.forEach((r, i) => {
+      if (filter !== 'all' && r.status !== filter) return;
+      const row = document.createElement('div');
+      row.className = 'item ' + r.status;
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = i + 1;
+      const t = document.createElement('span'); t.className = 't'; t.textContent = r.text;
+      const b = document.createElement('span'); b.className = 'b'; b.textContent = LABEL[r.status] || '';
+      if (r.status === 'near') {
+        const s = document.createElement('span'); s.className = 'score';
+        s.textContent = '(' + Math.round(r.score * 100) + '%)'; b.appendChild(s);
+      }
+      row.append(n, t, b); list.appendChild(row);
+    });
+    $('resultCard').hidden = false;
+    if (c.match) show('✓ มีข้อมูลตรงกัน ' + c.match + ' รายชื่อ จากทั้งหมด ' + results.length, 'ok');
+    else show('ไม่พบข้อมูลที่ตรงกัน', 'info');
+  }
+
+  updateCount();
+})();
+</script>
+</body>
+</html>
