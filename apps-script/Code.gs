@@ -177,7 +177,18 @@ function keys_(s) {
     changed = true;
     return lat;
   }).join('');
-  return changed && alt !== plain ? [plain, alt] : [plain];
+  const out = [plain];
+  if (changed && alt !== plain) out.push(alt);
+  // แบบหลวม: ไม่สนวรรณยุกต์ ไม้ไต่คู้ การันต์ และ ใ/ไ (พิมพ์พลาดบ่อย)
+  out.slice().forEach(function (k) {
+    const loose = looseThai_(k);
+    if (loose && out.indexOf(loose) === -1) out.push(loose);
+  });
+  return out;
+}
+
+function looseThai_(k) {
+  return k.replace(/[่-๎]/g, '').replace(/ใ/g, 'ไ');
 }
 
 function buildIndex_(names) {
