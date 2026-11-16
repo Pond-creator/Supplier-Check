@@ -97,6 +97,7 @@ const EN_NOISE = ['co', 'company', 'ltd', 'limited', 'inc', 'incorporated', 'cor
 function normalize_(s) {
   let t = String(s).normalize('NFC').toLowerCase();
   t = t.replace(/[​ ]/g, ' ');
+  t = t.replace(/(^|[^฀-๿])บ\s*\.\s*/g, '$1 ');   // "บ." = บริษัท (ย่อ)
   TH_NOISE.forEach(function (w) { t = t.split(w).join(' '); });
   t = t.replace(/[^a-z0-9฀-๿]+/g, ' ');
   const tokens = t.split(' ').filter(function (w) { return w && EN_NOISE.indexOf(w) === -1; });
